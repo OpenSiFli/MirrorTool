@@ -42,7 +42,7 @@ async function main(): Promise<void> {
 
 async function runPlan(args: ArgMap): Promise<void> {
   const configPath = requireArg(args, "--config");
-  const mode = requirePlannerMode(requireArg(args, "--mode"));
+  const mode = normalizePlannerMode(requirePlannerMode(requireArg(args, "--mode")));
   const githubOutput = optionalArg(args, "--github-output");
   const config = await readConfig(configPath);
   const client = new GitHubClient(resolveGitHubToken(process.env));
@@ -217,6 +217,14 @@ function requirePlannerMode(value: string): PlannerMode {
   }
 
   throw new Error(`Unsupported planner mode: ${value}`);
+}
+
+function normalizePlannerMode(mode: PlannerMode): PlannerMode {
+  if (mode === "workflow_dispatch") {
+    return "push";
+  }
+
+  return mode;
 }
 
 async function appendGitHubOutputs(outputPath: string, values: Record<string, string>): Promise<void> {

@@ -43,7 +43,7 @@
 
 - `push` 到 `master`：补同步 `manualTags` 中尚未同步的 tag。
 - `schedule`：每周一北京时间 01:00 检测新的正式 Release。
-- `workflow_dispatch`：手工触发一次完整扫描。
+- `workflow_dispatch`：手工触发，仅处理 `manualTags` 中尚未同步的 tag。
 
 ## Secrets
 
