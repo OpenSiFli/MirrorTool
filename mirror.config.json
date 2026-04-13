@@ -7,7 +7,9 @@
       "manualTags": [
         "0.11.6"
       ],
-      "syncedTags": [],
+      "syncedTags": [
+        "0.11.6"
+      ],
       "flushUrl": null
     },
     {
@@ -16,7 +18,9 @@
       "manualTags": [
         "v1.13.2"
       ],
-      "syncedTags": [],
+      "syncedTags": [
+        "v1.13.2"
+      ],
       "flushUrl": null
     }
   ]
