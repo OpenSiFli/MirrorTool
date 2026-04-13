@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "repos": [
+    {
+      "owner": "astral-sh",
+      "repo": "uv",
+      "manualTags": [
+        "0.11.6"
+      ],
+      "syncedTags": [],
+      "flushUrl": null
+    },
+    {
+      "owner": "ninja-build",
+      "repo": "ninja",
+      "manualTags": [
+        "v1.13.2"
+      ],
+      "syncedTags": [],
+      "flushUrl": null
+    }
+  ]
+}
