@@ -12,8 +12,6 @@ on:
       - "package.json"
       - "src/**"
       - "tsconfig.json"
-  schedule:
-    - cron: "0 17 * * 0"
   workflow_dispatch:
 
 permissions:

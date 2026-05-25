@@ -7,10 +7,10 @@ import { applySyncedTasks, readConfig, stringifyConfig, writeConfig } from "./co
 import { downloadReleaseAssets } from "./downloader.ts";
 import { GitHubClient, resolveGitHubToken } from "./github.ts";
 import { buildPlan } from "./planner.ts";
-import type { PlannerMode, Release, SyncTask } from "./types.ts";
+import type { PlannerMode, SyncTask } from "./types.ts";
 
 const HELP_TEXT = `Usage:
-  bun run src/cli.ts plan --config mirror.config.json --mode <push|schedule|workflow_dispatch> [--github-output <path>]
+  bun run src/cli.ts plan --config mirror.config.json --mode <push|workflow_dispatch> [--github-output <path>]
   bun run src/cli.ts download --owner <owner> --repo <repo> --tag <tag> --output-root <dir> [--github-output <path>]
   bun run src/cli.ts apply-state --config mirror.config.json --tasks-json <json> [--write] [--github-output <path>]
 `;
@@ -42,26 +42,11 @@ async function main(): Promise<void> {
 
 async function runPlan(args: ArgMap): Promise<void> {
   const configPath = requireArg(args, "--config");
-  const mode = normalizePlannerMode(requirePlannerMode(requireArg(args, "--mode")));
+  const mode = requirePlannerMode(requireArg(args, "--mode"));
   const githubOutput = optionalArg(args, "--github-output");
   const config = await readConfig(configPath);
-  const client = new GitHubClient(resolveGitHubToken(process.env));
 
-  const releasesByRepo = new Map<string, Release[]>();
-  if (mode !== "push") {
-    const releasePairs = await Promise.all(
-      config.repos.map(async (repo) => {
-        const releases = await client.listReleases(repo.owner, repo.repo);
-        return [`${repo.owner}/${repo.repo}`, releases] as const;
-      }),
-    );
-
-    for (const [repoKey, releases] of releasePairs) {
-      releasesByRepo.set(repoKey, releases);
-    }
-  }
-
-  const plan = buildPlan(config.repos, releasesByRepo, mode);
+  const plan = buildPlan(config.repos, mode);
   if (githubOutput) {
     await appendGitHubOutputs(githubOutput, {
       has_tasks: String(plan.tasks.length > 0),
@@ -148,8 +133,8 @@ function normalizeTask(task: unknown, index: number): SyncTask {
   }
 
   const reason = task.reason;
-  if (reason !== "manual" && reason !== "discovered") {
-    throw new Error(`tasks[${index}].reason must be "manual" or "discovered"`);
+  if (reason !== "manual") {
+    throw new Error(`tasks[${index}].reason must be "manual"`);
   }
 
   return {
@@ -212,19 +197,11 @@ function optionalArg(args: ArgMap, name: string): string | undefined {
 }
 
 function requirePlannerMode(value: string): PlannerMode {
-  if (value === "push" || value === "schedule" || value === "workflow_dispatch") {
+  if (value === "push" || value === "workflow_dispatch") {
     return value;
   }
 
   throw new Error(`Unsupported planner mode: ${value}`);
-}
-
-function normalizePlannerMode(mode: PlannerMode): PlannerMode {
-  if (mode === "workflow_dispatch") {
-    return "push";
-  }
-
-  return mode;
 }
 
 async function appendGitHubOutputs(outputPath: string, values: Record<string, string>): Promise<void> {

@@ -6,7 +6,7 @@
 
 - 支持在 `mirror.config.json` 中配置多个 GitHub 仓库。
 - 支持手工指定必须同步的 `manualTags`。
-- 每周自动扫描新的正式 Release，并同步带资产的 tag。
+- 所有同步目标都通过 `manualTags` 手工管理。
 - 同步成功后自动更新 `master` 分支上的 `syncedTags`。
 - COS 路径固定为 `github_assets/<org>/<repo>/releases/download/<tag>/<asset-name>`。
 
@@ -42,7 +42,6 @@
 工作流文件为 `.github/workflows/mirror-sync.yml`，触发方式：
 
 - `push` 到 `master`：补同步 `manualTags` 中尚未同步的 tag。
-- `schedule`：每周一北京时间 01:00 检测新的正式 Release。
 - `workflow_dispatch`：手工触发，仅处理 `manualTags` 中尚未同步的 tag。
 
 ## Secrets
@@ -69,7 +68,7 @@ bun test
 生成计划：
 
 ```bash
-bun run src/cli.ts plan --config mirror.config.json --mode schedule
+bun run src/cli.ts plan --config mirror.config.json --mode push
 ```
 
 下载单个 release 的全部资产到本地：

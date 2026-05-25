@@ -41,23 +41,6 @@ export class GitHubClient {
     this.token = token;
   }
 
-  async listReleases(owner: string, repo: string): Promise<Release[]> {
-    const releases: Release[] = [];
-    let page = 1;
-
-    while (true) {
-      const response = await this.requestJson<GitHubReleaseResponse[]>(
-        `/repos/${owner}/${repo}/releases?per_page=100&page=${page}`,
-      );
-
-      releases.push(...response.map(mapRelease));
-      if (response.length < 100) {
-        return releases;
-      }
-      page += 1;
-    }
-  }
-
   async getReleaseByTag(owner: string, repo: string, tag: string): Promise<Release> {
     const response = await this.requestJson<GitHubReleaseResponse>(
       `/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,

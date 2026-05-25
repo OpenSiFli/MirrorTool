@@ -27,14 +27,14 @@ export interface Release {
   assets: ReleaseAsset[];
 }
 
-export type PlannerMode = "push" | "schedule" | "workflow_dispatch";
+export type PlannerMode = "push" | "workflow_dispatch";
 
 export interface SyncTask {
   owner: string;
   repo: string;
   tag: string;
   flushUrl: string | null;
-  reason: "manual" | "discovered";
+  reason: "manual";
 }
 
 export interface PlanResult {
