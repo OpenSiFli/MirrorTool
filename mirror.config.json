@@ -11,7 +11,8 @@
         "0.11.6"
       ],
       "flushUrl": null,
-      "assetNames": null
+      "assetNames": null,
+      "assetTransforms": []
     },
     {
       "owner": "ninja-build",
@@ -23,7 +24,8 @@
         "v1.13.2"
       ],
       "flushUrl": null,
-      "assetNames": null
+      "assetNames": null,
+      "assetTransforms": []
     },
     {
       "owner": "zephyrproject-rtos",
@@ -31,7 +33,9 @@
       "manualTags": [
         "v1.0.1"
       ],
-      "syncedTags": [],
+      "syncedTags": [
+        "v1.0.1"
+      ],
       "flushUrl": "https://downloads.sifli.com/github_assets/zephyrproject-rtos/sdk-ng/releases/download/v1.0.1/",
       "assetNames": [
         "toolchain_gnu_linux-aarch64_arm-zephyr-eabi.tar.xz",
