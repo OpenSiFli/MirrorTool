@@ -9,6 +9,7 @@ const repo: RepoConfig = {
   manualTags: ["manual-tag"],
   syncedTags: ["already-synced"],
   flushUrl: null,
+  assetNames: ["toolchain.tar.xz"],
 };
 
 describe("buildPlan", () => {
@@ -21,6 +22,7 @@ describe("buildPlan", () => {
         repo: "crosstool-ng",
         tag: "manual-tag",
         flushUrl: null,
+        assetNames: ["toolchain.tar.xz"],
         reason: "manual",
       },
     ]);
@@ -35,6 +37,7 @@ describe("buildPlan", () => {
         repo: "crosstool-ng",
         tag: "manual-tag",
         flushUrl: null,
+        assetNames: ["toolchain.tar.xz"],
         reason: "manual",
       },
     ]);

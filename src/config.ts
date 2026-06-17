@@ -62,6 +62,7 @@ function normalizeRepo(input: unknown, index: number, seenRepos: Set<string>): R
   const manualTags = normalizeStringArray(input.manualTags, `repos[${index}].manualTags`);
   const syncedTags = normalizeStringArray(input.syncedTags, `repos[${index}].syncedTags`);
   const flushUrl = normalizeNullableString(input.flushUrl, `repos[${index}].flushUrl`);
+  const assetNames = normalizeOptionalStringArray(input.assetNames, `repos[${index}].assetNames`);
 
   return {
     owner,
@@ -69,6 +70,7 @@ function normalizeRepo(input: unknown, index: number, seenRepos: Set<string>): R
     manualTags: [...manualTags].sort(),
     syncedTags: [...syncedTags].sort(),
     flushUrl,
+    assetNames,
   };
 }
 
@@ -94,6 +96,14 @@ function normalizeNullableString(value: unknown, fieldName: string): string | nu
   }
 
   return requireNonEmptyString(value, fieldName);
+}
+
+function normalizeOptionalStringArray(value: unknown, fieldName: string): string[] | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  return [...normalizeStringArray(value, fieldName)].sort();
 }
 
 function requireNonEmptyString(value: unknown, fieldName: string): string {

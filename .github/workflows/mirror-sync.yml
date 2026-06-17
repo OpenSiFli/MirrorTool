@@ -80,12 +80,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
+          ASSET_NAMES_JSON: ${{ toJson(matrix.assetNames) }}
         run: |
           bun run src/cli.ts download \
             --owner "${{ matrix.owner }}" \
             --repo "${{ matrix.repo }}" \
             --tag "${{ matrix.tag }}" \
             --output-root ".mirror-work/assets" \
+            --asset-names-json "$ASSET_NAMES_JSON" \
             --github-output "$GITHUB_OUTPUT"
 
       - name: Upload to SiFli COS

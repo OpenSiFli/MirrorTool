@@ -15,6 +15,7 @@ describe("normalizeConfig", () => {
             manualTags: [],
             syncedTags: [],
             flushUrl: null,
+            assetNames: null,
           },
           {
             owner: "OpenSiFli",
@@ -22,6 +23,7 @@ describe("normalizeConfig", () => {
             manualTags: [],
             syncedTags: [],
             flushUrl: null,
+            assetNames: null,
           },
         ],
       }),
@@ -39,10 +41,35 @@ describe("normalizeConfig", () => {
             manualTags: ["14.2.0-20250221", "14.2.0-20250221"],
             syncedTags: [],
             flushUrl: null,
+            assetNames: null,
           },
         ],
       }),
     ).toThrow("Duplicate value in repos[0].manualTags");
+  });
+
+  test("accepts an optional release asset whitelist", () => {
+    const config = normalizeConfig({
+      version: 1,
+      repos: [
+        {
+          owner: "zephyrproject-rtos",
+          repo: "sdk-ng",
+          manualTags: ["v1.0.1"],
+          syncedTags: [],
+          flushUrl: null,
+          assetNames: [
+            "toolchain_gnu_linux-x86_64_arm-zephyr-eabi.tar.xz",
+            "toolchain_gnu_linux-aarch64_arm-zephyr-eabi.tar.xz",
+          ],
+        },
+      ],
+    });
+
+    expect(config.repos[0]?.assetNames).toEqual([
+      "toolchain_gnu_linux-aarch64_arm-zephyr-eabi.tar.xz",
+      "toolchain_gnu_linux-x86_64_arm-zephyr-eabi.tar.xz",
+    ]);
   });
 });
 
@@ -57,6 +84,7 @@ describe("applySyncedTasks", () => {
           manualTags: ["14.2.0-20250221"],
           syncedTags: [],
           flushUrl: null,
+          assetNames: null,
         },
       ],
     };
@@ -67,6 +95,7 @@ describe("applySyncedTasks", () => {
         repo: "crosstool-ng",
         tag: "14.2.0-20250221",
         flushUrl: null,
+        assetNames: null,
         reason: "manual",
       },
     ]);

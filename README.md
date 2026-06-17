@@ -25,7 +25,8 @@
         "14.2.0-20250221"
       ],
       "syncedTags": [],
-      "flushUrl": null
+      "flushUrl": null,
+      "assetNames": null
     }
   ]
 }
@@ -36,6 +37,7 @@
 - `manualTags`: 手工指定、必须补同步的 tag。
 - `syncedTags`: 已成功同步到 COS 的 tag，由工作流自动维护。
 - `flushUrl`: 可选 CDN 刷新路径；不需要时填 `null`。
+- `assetNames`: 可选 Release asset 白名单；填 `null` 时同步该 tag 下全部 assets，填字符串数组时只同步这些 assets。
 
 ## 工作流
 

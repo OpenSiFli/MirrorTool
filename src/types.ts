@@ -4,6 +4,7 @@ export interface RepoConfig {
   manualTags: string[];
   syncedTags: string[];
   flushUrl: string | null;
+  assetNames: string[] | null;
 }
 
 export interface MirrorConfig {
@@ -34,6 +35,7 @@ export interface SyncTask {
   repo: string;
   tag: string;
   flushUrl: string | null;
+  assetNames: string[] | null;
   reason: "manual";
 }
 

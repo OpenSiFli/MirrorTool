@@ -11,7 +11,7 @@ import type { PlannerMode, SyncTask } from "./types.ts";
 
 const HELP_TEXT = `Usage:
   bun run src/cli.ts plan --config mirror.config.json --mode <push|workflow_dispatch> [--github-output <path>]
-  bun run src/cli.ts download --owner <owner> --repo <repo> --tag <tag> --output-root <dir> [--github-output <path>]
+  bun run src/cli.ts download --owner <owner> --repo <repo> --tag <tag> --output-root <dir> [--asset-names-json <json>] [--github-output <path>]
   bun run src/cli.ts apply-state --config mirror.config.json --tasks-json <json> [--write] [--github-output <path>]
 `;
 
@@ -63,6 +63,7 @@ async function runDownload(args: ArgMap): Promise<void> {
   const repo = requireArg(args, "--repo");
   const tag = requireArg(args, "--tag");
   const outputRoot = requireArg(args, "--output-root");
+  const assetNames = parseAssetNamesJson(optionalArg(args, "--asset-names-json"));
   const githubOutput = optionalArg(args, "--github-output");
   const client = new GitHubClient(resolveGitHubToken(process.env));
 
@@ -72,6 +73,7 @@ async function runDownload(args: ArgMap): Promise<void> {
     repo,
     tag,
     outputRoot,
+    assetNames,
   });
 
   if (githubOutput) {
@@ -142,6 +144,7 @@ function normalizeTask(task: unknown, index: number): SyncTask {
     repo: requireString(task.repo, `tasks[${index}].repo`),
     tag: requireString(task.tag, `tasks[${index}].tag`),
     flushUrl: normalizeFlushUrl(task.flushUrl, `tasks[${index}].flushUrl`),
+    assetNames: normalizeAssetNames(task.assetNames, `tasks[${index}].assetNames`),
     reason,
   };
 }
@@ -152,6 +155,42 @@ function normalizeFlushUrl(value: unknown, fieldName: string): string | null {
   }
 
   return requireString(value, fieldName);
+}
+
+function parseAssetNamesJson(value: string | undefined): string[] | null {
+  if (!value) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse --asset-names-json: ${detail}`);
+  }
+
+  return normalizeAssetNames(parsed, "--asset-names-json");
+}
+
+function normalizeAssetNames(value: unknown, fieldName: string): string[] | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error(`${fieldName} must be null or an array of strings`);
+  }
+
+  const seen = new Set<string>();
+  return value.map((item, index) => {
+    const assetName = requireString(item, `${fieldName}[${index}]`);
+    if (seen.has(assetName)) {
+      throw new Error(`Duplicate value in ${fieldName}: ${assetName}`);
+    }
+    seen.add(assetName);
+    return assetName;
+  });
 }
 
 type ArgMap = Map<string, string | true>;

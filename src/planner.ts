@@ -21,6 +21,7 @@ export function buildPlan(
         repo: repo.repo,
         tag,
         flushUrl: repo.flushUrl,
+        assetNames: repo.assetNames,
         reason: "manual",
       });
       queuedTags.add(tag);
