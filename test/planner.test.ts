@@ -10,6 +10,14 @@ const repo: RepoConfig = {
   syncedTags: ["already-synced"],
   flushUrl: null,
   assetNames: ["toolchain.tar.xz"],
+  assetTransforms: [
+    {
+      sourceName: "toolchain.7z",
+      targetName: "toolchain.zip",
+      format: "zip",
+      removeSource: true,
+    },
+  ],
 };
 
 describe("buildPlan", () => {
@@ -23,6 +31,14 @@ describe("buildPlan", () => {
         tag: "manual-tag",
         flushUrl: null,
         assetNames: ["toolchain.tar.xz"],
+        assetTransforms: [
+          {
+            sourceName: "toolchain.7z",
+            targetName: "toolchain.zip",
+            format: "zip",
+            removeSource: true,
+          },
+        ],
         reason: "manual",
       },
     ]);
@@ -38,6 +54,14 @@ describe("buildPlan", () => {
         tag: "manual-tag",
         flushUrl: null,
         assetNames: ["toolchain.tar.xz"],
+        assetTransforms: [
+          {
+            sourceName: "toolchain.7z",
+            targetName: "toolchain.zip",
+            format: "zip",
+            removeSource: true,
+          },
+        ],
         reason: "manual",
       },
     ]);

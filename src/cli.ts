@@ -7,11 +7,11 @@ import { applySyncedTasks, readConfig, stringifyConfig, writeConfig } from "./co
 import { downloadReleaseAssets } from "./downloader.ts";
 import { GitHubClient, resolveGitHubToken } from "./github.ts";
 import { buildPlan } from "./planner.ts";
-import type { PlannerMode, SyncTask } from "./types.ts";
+import type { AssetTransform, PlannerMode, SyncTask } from "./types.ts";
 
 const HELP_TEXT = `Usage:
   bun run src/cli.ts plan --config mirror.config.json --mode <push|workflow_dispatch> [--github-output <path>]
-  bun run src/cli.ts download --owner <owner> --repo <repo> --tag <tag> --output-root <dir> [--asset-names-json <json>] [--github-output <path>]
+  bun run src/cli.ts download --owner <owner> --repo <repo> --tag <tag> --output-root <dir> [--asset-names-json <json>] [--asset-transforms-json <json>] [--github-output <path>]
   bun run src/cli.ts apply-state --config mirror.config.json --tasks-json <json> [--write] [--github-output <path>]
 `;
 
@@ -64,6 +64,7 @@ async function runDownload(args: ArgMap): Promise<void> {
   const tag = requireArg(args, "--tag");
   const outputRoot = requireArg(args, "--output-root");
   const assetNames = parseAssetNamesJson(optionalArg(args, "--asset-names-json"));
+  const assetTransforms = parseAssetTransformsJson(optionalArg(args, "--asset-transforms-json"));
   const githubOutput = optionalArg(args, "--github-output");
   const client = new GitHubClient(resolveGitHubToken(process.env));
 
@@ -74,6 +75,7 @@ async function runDownload(args: ArgMap): Promise<void> {
     tag,
     outputRoot,
     assetNames,
+    assetTransforms,
   });
 
   if (githubOutput) {
@@ -145,6 +147,7 @@ function normalizeTask(task: unknown, index: number): SyncTask {
     tag: requireString(task.tag, `tasks[${index}].tag`),
     flushUrl: normalizeFlushUrl(task.flushUrl, `tasks[${index}].flushUrl`),
     assetNames: normalizeAssetNames(task.assetNames, `tasks[${index}].assetNames`),
+    assetTransforms: normalizeAssetTransforms(task.assetTransforms, `tasks[${index}].assetTransforms`),
     reason,
   };
 }
@@ -173,6 +176,22 @@ function parseAssetNamesJson(value: string | undefined): string[] | null {
   return normalizeAssetNames(parsed, "--asset-names-json");
 }
 
+function parseAssetTransformsJson(value: string | undefined): AssetTransform[] {
+  if (!value) {
+    return [];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse --asset-transforms-json: ${detail}`);
+  }
+
+  return normalizeAssetTransforms(parsed, "--asset-transforms-json");
+}
+
 function normalizeAssetNames(value: unknown, fieldName: string): string[] | null {
   if (value === null || value === undefined) {
     return null;
@@ -190,6 +209,47 @@ function normalizeAssetNames(value: unknown, fieldName: string): string[] | null
     }
     seen.add(assetName);
     return assetName;
+  });
+}
+
+function normalizeAssetTransforms(value: unknown, fieldName: string): AssetTransform[] {
+  if (value === null || value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error(`${fieldName} must be null or an array of objects`);
+  }
+
+  const seenTargets = new Set<string>();
+  return value.map((item, index) => {
+    if (!isRecord(item)) {
+      throw new Error(`${fieldName}[${index}] must be an object`);
+    }
+
+    const sourceName = requireString(item.sourceName, `${fieldName}[${index}].sourceName`);
+    const targetName = requireString(item.targetName, `${fieldName}[${index}].targetName`);
+    const format = item.format ?? "zip";
+    if (format !== "zip") {
+      throw new Error(`${fieldName}[${index}].format must be "zip"`);
+    }
+    if (sourceName === targetName) {
+      throw new Error(`${fieldName}[${index}].targetName must differ from sourceName`);
+    }
+    if (item.removeSource !== undefined && typeof item.removeSource !== "boolean") {
+      throw new Error(`${fieldName}[${index}].removeSource must be a boolean`);
+    }
+    if (seenTargets.has(targetName)) {
+      throw new Error(`Duplicate transformed target in ${fieldName}: ${targetName}`);
+    }
+    seenTargets.add(targetName);
+
+    return {
+      sourceName,
+      targetName,
+      format,
+      removeSource: item.removeSource ?? true,
+    };
   });
 }
 

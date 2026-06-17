@@ -31,15 +31,21 @@
       "manualTags": [
         "v1.0.1"
       ],
-      "syncedTags": [
-        "v1.0.1"
-      ],
+      "syncedTags": [],
       "flushUrl": "https://downloads.sifli.com/github_assets/zephyrproject-rtos/sdk-ng/releases/download/v1.0.1/",
       "assetNames": [
         "toolchain_gnu_linux-aarch64_arm-zephyr-eabi.tar.xz",
         "toolchain_gnu_linux-x86_64_arm-zephyr-eabi.tar.xz",
         "toolchain_gnu_macos-aarch64_arm-zephyr-eabi.tar.xz",
         "toolchain_gnu_windows-x86_64_arm-zephyr-eabi.7z"
+      ],
+      "assetTransforms": [
+        {
+          "sourceName": "toolchain_gnu_windows-x86_64_arm-zephyr-eabi.7z",
+          "targetName": "toolchain_gnu_windows-x86_64_arm-zephyr-eabi.zip",
+          "format": "zip",
+          "removeSource": true
+        }
       ]
     }
   ]

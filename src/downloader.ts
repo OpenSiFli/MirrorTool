@@ -1,8 +1,9 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 
+import { applyAssetTransforms } from "./archive-transform.ts";
 import { GitHubClient } from "./github.ts";
-import type { ReleaseAsset } from "./types.ts";
+import type { AssetTransform, ReleaseAsset } from "./types.ts";
 
 export interface DownloadReleaseAssetsOptions {
   client: GitHubClient;
@@ -11,6 +12,7 @@ export interface DownloadReleaseAssetsOptions {
   tag: string;
   outputRoot: string;
   assetNames?: readonly string[] | null;
+  assetTransforms?: readonly AssetTransform[] | null;
 }
 
 export interface DownloadReleaseAssetsResult {
@@ -39,11 +41,12 @@ export async function downloadReleaseAssets(
     const destinationPath = path.join(downloadDirectory, fileName);
     await client.downloadAsset(asset, destinationPath);
   }
+  const transformResult = await applyAssetTransforms(downloadDirectory, options.assetTransforms ?? []);
 
   return {
     downloadDirectory,
     prefix: buildMirrorPrefix(owner, repo, tag),
-    assetCount: assets.length,
+    assetCount: assets.length + transformResult.outputAssetCountDelta,
   };
 }
 

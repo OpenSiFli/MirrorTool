@@ -16,6 +16,7 @@ describe("normalizeConfig", () => {
             syncedTags: [],
             flushUrl: null,
             assetNames: null,
+            assetTransforms: [],
           },
           {
             owner: "OpenSiFli",
@@ -24,6 +25,7 @@ describe("normalizeConfig", () => {
             syncedTags: [],
             flushUrl: null,
             assetNames: null,
+            assetTransforms: [],
           },
         ],
       }),
@@ -42,6 +44,7 @@ describe("normalizeConfig", () => {
             syncedTags: [],
             flushUrl: null,
             assetNames: null,
+            assetTransforms: [],
           },
         ],
       }),
@@ -62,6 +65,7 @@ describe("normalizeConfig", () => {
             "toolchain_gnu_linux-x86_64_arm-zephyr-eabi.tar.xz",
             "toolchain_gnu_linux-aarch64_arm-zephyr-eabi.tar.xz",
           ],
+          assetTransforms: [],
         },
       ],
     });
@@ -70,6 +74,63 @@ describe("normalizeConfig", () => {
       "toolchain_gnu_linux-aarch64_arm-zephyr-eabi.tar.xz",
       "toolchain_gnu_linux-x86_64_arm-zephyr-eabi.tar.xz",
     ]);
+  });
+
+  test("accepts archive transform rules", () => {
+    const config = normalizeConfig({
+      version: 1,
+      repos: [
+        {
+          owner: "zephyrproject-rtos",
+          repo: "sdk-ng",
+          manualTags: ["v1.0.1"],
+          syncedTags: [],
+          flushUrl: null,
+          assetNames: ["toolchain_gnu_windows-x86_64_arm-zephyr-eabi.7z"],
+          assetTransforms: [
+            {
+              sourceName: "toolchain_gnu_windows-x86_64_arm-zephyr-eabi.7z",
+              targetName: "toolchain_gnu_windows-x86_64_arm-zephyr-eabi.zip",
+              format: "zip",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(config.repos[0]?.assetTransforms).toEqual([
+      {
+        sourceName: "toolchain_gnu_windows-x86_64_arm-zephyr-eabi.7z",
+        targetName: "toolchain_gnu_windows-x86_64_arm-zephyr-eabi.zip",
+        format: "zip",
+        removeSource: true,
+      },
+    ]);
+  });
+
+  test("rejects unsupported archive transform formats", () => {
+    expect(() =>
+      normalizeConfig({
+        version: 1,
+        repos: [
+          {
+            owner: "zephyrproject-rtos",
+            repo: "sdk-ng",
+            manualTags: ["v1.0.1"],
+            syncedTags: [],
+            flushUrl: null,
+            assetNames: ["toolchain.7z"],
+            assetTransforms: [
+              {
+                sourceName: "toolchain.7z",
+                targetName: "toolchain.tar.xz",
+                format: "tar.xz",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow('format must be "zip"');
   });
 });
 
@@ -85,6 +146,7 @@ describe("applySyncedTasks", () => {
           syncedTags: [],
           flushUrl: null,
           assetNames: null,
+          assetTransforms: [],
         },
       ],
     };
@@ -96,6 +158,7 @@ describe("applySyncedTasks", () => {
         tag: "14.2.0-20250221",
         flushUrl: null,
         assetNames: null,
+        assetTransforms: [],
         reason: "manual",
       },
     ]);

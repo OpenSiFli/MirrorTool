@@ -5,11 +5,19 @@ export interface RepoConfig {
   syncedTags: string[];
   flushUrl: string | null;
   assetNames: string[] | null;
+  assetTransforms: AssetTransform[];
 }
 
 export interface MirrorConfig {
   version: 1;
   repos: RepoConfig[];
+}
+
+export interface AssetTransform {
+  sourceName: string;
+  targetName: string;
+  format: "zip";
+  removeSource: boolean;
 }
 
 export interface ReleaseAsset {
@@ -36,6 +44,7 @@ export interface SyncTask {
   tag: string;
   flushUrl: string | null;
   assetNames: string[] | null;
+  assetTransforms: AssetTransform[];
   reason: "manual";
 }
 

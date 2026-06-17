@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { MirrorConfig, RepoConfig, SyncTask } from "./types.ts";
+import type { AssetTransform, MirrorConfig, RepoConfig, SyncTask } from "./types.ts";
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -63,6 +63,7 @@ function normalizeRepo(input: unknown, index: number, seenRepos: Set<string>): R
   const syncedTags = normalizeStringArray(input.syncedTags, `repos[${index}].syncedTags`);
   const flushUrl = normalizeNullableString(input.flushUrl, `repos[${index}].flushUrl`);
   const assetNames = normalizeOptionalStringArray(input.assetNames, `repos[${index}].assetNames`);
+  const assetTransforms = normalizeAssetTransforms(input.assetTransforms, `repos[${index}].assetTransforms`);
 
   return {
     owner,
@@ -71,6 +72,7 @@ function normalizeRepo(input: unknown, index: number, seenRepos: Set<string>): R
     syncedTags: [...syncedTags].sort(),
     flushUrl,
     assetNames,
+    assetTransforms,
   };
 }
 
@@ -80,7 +82,7 @@ function normalizeStringArray(value: unknown, fieldName: string): string[] {
   }
 
   const seen = new Set<string>();
-  return value.map((entry, index) => {
+  return value.map<string>((entry, index) => {
     const tag = requireNonEmptyString(entry, `${fieldName}[${index}]`);
     if (seen.has(tag)) {
       throw new ConfigError(`Duplicate value in ${fieldName}: ${tag}`);
@@ -104,6 +106,47 @@ function normalizeOptionalStringArray(value: unknown, fieldName: string): string
   }
 
   return [...normalizeStringArray(value, fieldName)].sort();
+}
+
+function normalizeAssetTransforms(value: unknown, fieldName: string): AssetTransform[] {
+  if (value === null || value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new ConfigError(`${fieldName} must be an array`);
+  }
+
+  const seenTargets = new Set<string>();
+  return value.map<AssetTransform>((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new ConfigError(`${fieldName}[${index}] must be an object`);
+    }
+
+    const sourceName = requireNonEmptyString(entry.sourceName, `${fieldName}[${index}].sourceName`);
+    const targetName = requireNonEmptyString(entry.targetName, `${fieldName}[${index}].targetName`);
+    if ((entry.format ?? "zip") !== "zip") {
+      throw new ConfigError(`${fieldName}[${index}].format must be "zip"`);
+    }
+    if (sourceName === targetName) {
+      throw new ConfigError(`${fieldName}[${index}].targetName must differ from sourceName`);
+    }
+    if (entry.removeSource !== undefined && typeof entry.removeSource !== "boolean") {
+      throw new ConfigError(`${fieldName}[${index}].removeSource must be a boolean`);
+    }
+    if (seenTargets.has(targetName)) {
+      throw new ConfigError(`Duplicate transformed target in ${fieldName}: ${targetName}`);
+    }
+    seenTargets.add(targetName);
+    const removeSource = entry.removeSource === undefined ? true : entry.removeSource;
+
+    return {
+      sourceName,
+      targetName,
+      format: "zip",
+      removeSource,
+    };
+  }).sort((left, right) => `${left.sourceName}/${left.targetName}`.localeCompare(`${right.sourceName}/${right.targetName}`));
 }
 
 function requireNonEmptyString(value: unknown, fieldName: string): string {

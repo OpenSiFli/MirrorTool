@@ -22,6 +22,7 @@ export function buildPlan(
         tag,
         flushUrl: repo.flushUrl,
         assetNames: repo.assetNames,
+        assetTransforms: repo.assetTransforms,
         reason: "manual",
       });
       queuedTags.add(tag);
