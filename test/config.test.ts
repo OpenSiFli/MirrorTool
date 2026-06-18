@@ -132,6 +132,57 @@ describe("normalizeConfig", () => {
       }),
     ).toThrow('format must be "zip"');
   });
+
+  test("sorts tags and archive transforms", () => {
+    const config = normalizeConfig({
+      version: 1,
+      repos: [
+        {
+          owner: "zephyrproject-rtos",
+          repo: "sdk-ng",
+          manualTags: ["v1.0.2", "v1.0.1"],
+          syncedTags: ["v1.0.2", "v1.0.1"],
+          flushUrl: null,
+          assetNames: null,
+          assetTransforms: [
+            {
+              sourceName: "z.7z",
+              targetName: "z.zip",
+              format: "zip",
+            },
+            {
+              sourceName: "a.7z",
+              targetName: "a.zip",
+              format: "zip",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(config.repos[0]?.manualTags).toEqual(["v1.0.1", "v1.0.2"]);
+    expect(config.repos[0]?.syncedTags).toEqual(["v1.0.1", "v1.0.2"]);
+    expect(config.repos[0]?.assetTransforms.map((transform) => transform.targetName)).toEqual(["a.zip", "z.zip"]);
+  });
+
+  test("rejects duplicate configured asset names", () => {
+    expect(() =>
+      normalizeConfig({
+        version: 1,
+        repos: [
+          {
+            owner: "zephyrproject-rtos",
+            repo: "sdk-ng",
+            manualTags: ["v1.0.1"],
+            syncedTags: [],
+            flushUrl: null,
+            assetNames: ["toolchain.tar.xz", "toolchain.tar.xz"],
+            assetTransforms: [],
+          },
+        ],
+      }),
+    ).toThrow("Duplicate value in repos[0].assetNames");
+  });
 });
 
 describe("applySyncedTasks", () => {
