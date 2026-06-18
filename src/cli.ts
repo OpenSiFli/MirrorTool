@@ -3,11 +3,23 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
-import { applySyncedTasks, readConfig, stringifyConfig, writeConfig } from "./config.ts";
-import { downloadReleaseAssets } from "./downloader.ts";
+import { cli, define } from "gunshi";
+
+import {
+  applySyncedTasks as applySyncedTasksDefault,
+  readConfig as readConfigDefault,
+  stringifyConfig,
+  writeConfig as writeConfigDefault,
+} from "./config.ts";
+import { downloadReleaseAssets as downloadReleaseAssetsDefault } from "./downloader.ts";
 import { GitHubClient, resolveGitHubToken } from "./github.ts";
-import { buildPlan } from "./planner.ts";
-import type { AssetTransform, PlannerMode, SyncTask } from "./types.ts";
+import { buildPlan as buildPlanDefault } from "./planner.ts";
+import {
+  normalizeAssetNames,
+  normalizeAssetTransforms,
+  normalizePlannerMode,
+  normalizeSyncTasks,
+} from "./schema.ts";
 
 const HELP_TEXT = `Usage:
   bun run src/cli.ts plan --config mirror.config.json --mode <push|workflow_dispatch> [--github-output <path>]
@@ -15,292 +27,233 @@ const HELP_TEXT = `Usage:
   bun run src/cli.ts apply-state --config mirror.config.json --tasks-json <json> [--write] [--github-output <path>]
 `;
 
-async function main(): Promise<void> {
-  const [command, ...rest] = process.argv.slice(2);
+const COMMAND_NAMES = new Set(["plan", "download", "apply-state"]);
+const PLANNER_MODES = ["push", "workflow_dispatch"] as const;
 
-  if (!command || command === "--help" || command === "-h") {
-    process.stdout.write(HELP_TEXT);
-    return;
-  }
-
-  const args = parseArgs(rest);
-
-  switch (command) {
-    case "plan":
-      await runPlan(args);
-      return;
-    case "download":
-      await runDownload(args);
-      return;
-    case "apply-state":
-      await runApplyState(args);
-      return;
-    default:
-      throw new Error(`Unknown command: ${command}`);
-  }
+export interface CliDependencies {
+  applySyncedTasks: typeof applySyncedTasksDefault;
+  buildPlan: typeof buildPlanDefault;
+  createGitHubClient: () => GitHubClient;
+  downloadReleaseAssets: typeof downloadReleaseAssetsDefault;
+  readConfig: typeof readConfigDefault;
+  writeConfig: typeof writeConfigDefault;
+  writeStdout: (text: string) => void;
 }
 
-async function runPlan(args: ArgMap): Promise<void> {
-  const configPath = requireArg(args, "--config");
-  const mode = requirePlannerMode(requireArg(args, "--mode"));
-  const githubOutput = optionalArg(args, "--github-output");
-  const config = await readConfig(configPath);
-
-  const plan = buildPlan(config.repos, mode);
-  if (githubOutput) {
-    await appendGitHubOutputs(githubOutput, {
-      has_tasks: String(plan.tasks.length > 0),
-      task_count: String(plan.tasks.length),
-      tasks_json: JSON.stringify(plan.tasks),
-    });
-  }
-
-  process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
-}
-
-async function runDownload(args: ArgMap): Promise<void> {
-  const owner = requireArg(args, "--owner");
-  const repo = requireArg(args, "--repo");
-  const tag = requireArg(args, "--tag");
-  const outputRoot = requireArg(args, "--output-root");
-  const assetNames = parseAssetNamesJson(optionalArg(args, "--asset-names-json"));
-  const assetTransforms = parseAssetTransformsJson(optionalArg(args, "--asset-transforms-json"));
-  const githubOutput = optionalArg(args, "--github-output");
-  const client = new GitHubClient(resolveGitHubToken(process.env));
-
-  const result = await downloadReleaseAssets({
-    client,
-    owner,
-    repo,
-    tag,
-    outputRoot,
-    assetNames,
-    assetTransforms,
-  });
-
-  if (githubOutput) {
-    await appendGitHubOutputs(githubOutput, {
-      download_directory: result.downloadDirectory,
-      prefix: result.prefix,
-      asset_count: String(result.assetCount),
-    });
-  }
-
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-}
-
-async function runApplyState(args: ArgMap): Promise<void> {
-  const configPath = requireArg(args, "--config");
-  const tasksJson = requireArg(args, "--tasks-json");
-  const githubOutput = optionalArg(args, "--github-output");
-  const write = hasFlag(args, "--write");
-  const currentConfig = await readConfig(configPath);
-  const tasks = parseTasksJson(tasksJson);
-  const nextConfig = applySyncedTasks(currentConfig, tasks);
-  const currentText = stringifyConfig(currentConfig);
-  const nextText = stringifyConfig(nextConfig);
-  const changed = currentText !== nextText;
-
-  if (write && changed) {
-    await mkdir(path.dirname(configPath), { recursive: true });
-    await writeConfig(configPath, nextConfig);
-  }
-
-  if (githubOutput) {
-    await appendGitHubOutputs(githubOutput, {
-      config_changed: String(changed),
-    });
-  }
-
-  process.stdout.write(nextText);
-}
-
-function parseTasksJson(tasksJson: string): SyncTask[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(tasksJson);
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse --tasks-json: ${detail}`);
-  }
-
-  if (!Array.isArray(parsed)) {
-    throw new Error("--tasks-json must contain a JSON array");
-  }
-
-  return parsed.map((task, index) => normalizeTask(task, index));
-}
-
-function normalizeTask(task: unknown, index: number): SyncTask {
-  if (!isRecord(task)) {
-    throw new Error(`tasks[${index}] must be an object`);
-  }
-
-  const reason = task.reason;
-  if (reason !== "manual") {
-    throw new Error(`tasks[${index}].reason must be "manual"`);
-  }
-
+export function createDefaultDependencies(): CliDependencies {
   return {
-    owner: requireString(task.owner, `tasks[${index}].owner`),
-    repo: requireString(task.repo, `tasks[${index}].repo`),
-    tag: requireString(task.tag, `tasks[${index}].tag`),
-    flushUrl: normalizeFlushUrl(task.flushUrl, `tasks[${index}].flushUrl`),
-    assetNames: normalizeAssetNames(task.assetNames, `tasks[${index}].assetNames`),
-    assetTransforms: normalizeAssetTransforms(task.assetTransforms, `tasks[${index}].assetTransforms`),
-    reason,
+    applySyncedTasks: applySyncedTasksDefault,
+    buildPlan: buildPlanDefault,
+    createGitHubClient: () => new GitHubClient(resolveGitHubToken(process.env)),
+    downloadReleaseAssets: downloadReleaseAssetsDefault,
+    readConfig: readConfigDefault,
+    writeConfig: writeConfigDefault,
+    writeStdout: (text) => {
+      process.stdout.write(text);
+    },
   };
 }
 
-function normalizeFlushUrl(value: unknown, fieldName: string): string | null {
-  if (value === null || value === undefined) {
-    return null;
+export async function runCli(
+  args = process.argv.slice(2),
+  dependencyOverrides: Partial<CliDependencies> = {},
+): Promise<void> {
+  const dependencies = {
+    ...createDefaultDependencies(),
+    ...dependencyOverrides,
+  };
+
+  if (!args[0] || args[0] === "--help" || args[0] === "-h") {
+    dependencies.writeStdout(HELP_TEXT);
+    return;
   }
 
-  return requireString(value, fieldName);
+  if (!COMMAND_NAMES.has(args[0])) {
+    throw new Error(`Unknown command: ${args[0]}`);
+  }
+
+  await cli(args, define({ name: "mirror-tool" }), {
+    name: "mirror-tool",
+    subCommands: createCommands(dependencies),
+    renderHeader: null,
+    renderValidationErrors: null,
+  });
 }
 
-function parseAssetNamesJson(value: string | undefined): string[] | null {
-  if (!value) {
-    return null;
-  }
+function createCommands(dependencies: CliDependencies) {
+  return {
+    plan: define({
+      name: "plan",
+      description: "Build the mirror task plan",
+      toKebab: true,
+      args: {
+        config: {
+          type: "string",
+          required: true,
+          description: "Path to mirror.config.json",
+        },
+        mode: {
+          type: "enum",
+          choices: PLANNER_MODES,
+          required: true,
+          description: "Planner mode",
+        },
+        githubOutput: {
+          type: "string",
+          description: "Path to the GitHub Actions output file",
+        },
+      },
+      run: async (ctx) => {
+        const configPath = ctx.values.config;
+        const mode = normalizePlannerMode(ctx.values.mode);
+        const githubOutput = ctx.values.githubOutput;
+        const config = await dependencies.readConfig(configPath);
 
+        const plan = dependencies.buildPlan(config.repos, mode);
+        if (githubOutput) {
+          await appendGitHubOutputs(githubOutput, {
+            has_tasks: String(plan.tasks.length > 0),
+            task_count: String(plan.tasks.length),
+            tasks_json: JSON.stringify(plan.tasks),
+          });
+        }
+
+        dependencies.writeStdout(`${JSON.stringify(plan, null, 2)}\n`);
+      },
+    }),
+    download: define({
+      name: "download",
+      description: "Download release assets",
+      toKebab: true,
+      args: {
+        owner: {
+          type: "string",
+          required: true,
+          description: "GitHub repository owner",
+        },
+        repo: {
+          type: "string",
+          required: true,
+          description: "GitHub repository name",
+        },
+        tag: {
+          type: "string",
+          required: true,
+          description: "GitHub release tag",
+        },
+        outputRoot: {
+          type: "string",
+          required: true,
+          description: "Root directory for downloaded assets",
+        },
+        assetNamesJson: {
+          type: "custom",
+          parse: (value: string) => parseJsonArg(value, "--asset-names-json", (input) =>
+            normalizeAssetNames(input, "--asset-names-json")),
+          metavar: "json",
+          description: "JSON release asset name whitelist",
+        },
+        assetTransformsJson: {
+          type: "custom",
+          parse: (value: string) => parseJsonArg(value, "--asset-transforms-json", (input) =>
+            normalizeAssetTransforms(input, "--asset-transforms-json")),
+          metavar: "json",
+          description: "JSON archive transform rules",
+        },
+        githubOutput: {
+          type: "string",
+          description: "Path to the GitHub Actions output file",
+        },
+      },
+      run: async (ctx) => {
+        const client = dependencies.createGitHubClient();
+        const result = await dependencies.downloadReleaseAssets({
+          client,
+          owner: ctx.values.owner,
+          repo: ctx.values.repo,
+          tag: ctx.values.tag,
+          outputRoot: ctx.values.outputRoot,
+          assetNames: ctx.values.assetNamesJson ?? null,
+          assetTransforms: ctx.values.assetTransformsJson ?? [],
+        });
+
+        if (ctx.values.githubOutput) {
+          await appendGitHubOutputs(ctx.values.githubOutput, {
+            download_directory: result.downloadDirectory,
+            prefix: result.prefix,
+            asset_count: String(result.assetCount),
+          });
+        }
+
+        dependencies.writeStdout(`${JSON.stringify(result, null, 2)}\n`);
+      },
+    }),
+    "apply-state": define({
+      name: "apply-state",
+      description: "Apply synced tags to the mirror config",
+      toKebab: true,
+      args: {
+        config: {
+          type: "string",
+          required: true,
+          description: "Path to mirror.config.json",
+        },
+        tasksJson: {
+          type: "custom",
+          required: true,
+          parse: (value: string) => parseJsonArg(value, "--tasks-json", normalizeSyncTasks),
+          metavar: "json",
+          description: "JSON sync tasks",
+        },
+        write: {
+          type: "boolean",
+          description: "Write the updated config to disk",
+        },
+        githubOutput: {
+          type: "string",
+          description: "Path to the GitHub Actions output file",
+        },
+      },
+      run: async (ctx) => {
+        const configPath = ctx.values.config;
+        const currentConfig = await dependencies.readConfig(configPath);
+        const tasks = ctx.values.tasksJson;
+        const nextConfig = dependencies.applySyncedTasks(currentConfig, tasks);
+        const currentText = stringifyConfig(currentConfig);
+        const nextText = stringifyConfig(nextConfig);
+        const changed = currentText !== nextText;
+
+        if (ctx.values.write === true && changed) {
+          await dependencies.writeConfig(configPath, nextConfig);
+        }
+
+        if (ctx.values.githubOutput) {
+          await appendGitHubOutputs(ctx.values.githubOutput, {
+            config_changed: String(changed),
+          });
+        }
+
+        dependencies.writeStdout(nextText);
+      },
+    }),
+  };
+}
+
+function parseJsonArg<T>(value: string, argName: string, normalize: (input: unknown) => T): T {
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse --asset-names-json: ${detail}`);
+    throw new Error(`Failed to parse ${argName}: ${detail}`);
   }
 
-  return normalizeAssetNames(parsed, "--asset-names-json");
-}
-
-function parseAssetTransformsJson(value: string | undefined): AssetTransform[] {
-  if (!value) {
-    return [];
-  }
-
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(value);
+    return normalize(parsed);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse --asset-transforms-json: ${detail}`);
+    throw new Error(`Invalid ${argName}: ${detail}`);
   }
-
-  return normalizeAssetTransforms(parsed, "--asset-transforms-json");
-}
-
-function normalizeAssetNames(value: unknown, fieldName: string): string[] | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-
-  if (!Array.isArray(value)) {
-    throw new Error(`${fieldName} must be null or an array of strings`);
-  }
-
-  const seen = new Set<string>();
-  return value.map((item, index) => {
-    const assetName = requireString(item, `${fieldName}[${index}]`);
-    if (seen.has(assetName)) {
-      throw new Error(`Duplicate value in ${fieldName}: ${assetName}`);
-    }
-    seen.add(assetName);
-    return assetName;
-  });
-}
-
-function normalizeAssetTransforms(value: unknown, fieldName: string): AssetTransform[] {
-  if (value === null || value === undefined) {
-    return [];
-  }
-
-  if (!Array.isArray(value)) {
-    throw new Error(`${fieldName} must be null or an array of objects`);
-  }
-
-  const seenTargets = new Set<string>();
-  return value.map((item, index) => {
-    if (!isRecord(item)) {
-      throw new Error(`${fieldName}[${index}] must be an object`);
-    }
-
-    const sourceName = requireString(item.sourceName, `${fieldName}[${index}].sourceName`);
-    const targetName = requireString(item.targetName, `${fieldName}[${index}].targetName`);
-    const format = item.format ?? "zip";
-    if (format !== "zip") {
-      throw new Error(`${fieldName}[${index}].format must be "zip"`);
-    }
-    if (sourceName === targetName) {
-      throw new Error(`${fieldName}[${index}].targetName must differ from sourceName`);
-    }
-    if (item.removeSource !== undefined && typeof item.removeSource !== "boolean") {
-      throw new Error(`${fieldName}[${index}].removeSource must be a boolean`);
-    }
-    if (seenTargets.has(targetName)) {
-      throw new Error(`Duplicate transformed target in ${fieldName}: ${targetName}`);
-    }
-    seenTargets.add(targetName);
-
-    return {
-      sourceName,
-      targetName,
-      format,
-      removeSource: item.removeSource ?? true,
-    };
-  });
-}
-
-type ArgMap = Map<string, string | true>;
-
-function parseArgs(args: string[]): ArgMap {
-  const parsed = new Map<string, string | true>();
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (!arg?.startsWith("--")) {
-      throw new Error(`Unexpected argument: ${arg}`);
-    }
-
-    const next = args[index + 1];
-    if (!next || next.startsWith("--")) {
-      parsed.set(arg, true);
-      continue;
-    }
-
-    parsed.set(arg, next);
-    index += 1;
-  }
-
-  return parsed;
-}
-
-function hasFlag(args: ArgMap, flagName: string): boolean {
-  return args.get(flagName) === true;
-}
-
-function requireArg(args: ArgMap, name: string): string {
-  const value = args.get(name);
-  if (typeof value !== "string" || value === "") {
-    throw new Error(`Missing required argument ${name}`);
-  }
-
-  return value;
-}
-
-function optionalArg(args: ArgMap, name: string): string | undefined {
-  const value = args.get(name);
-  return typeof value === "string" ? value : undefined;
-}
-
-function requirePlannerMode(value: string): PlannerMode {
-  if (value === "push" || value === "workflow_dispatch") {
-    return value;
-  }
-
-  throw new Error(`Unsupported planner mode: ${value}`);
 }
 
 async function appendGitHubOutputs(outputPath: string, values: Record<string, string>): Promise<void> {
@@ -316,20 +269,19 @@ async function appendGitHubOutputs(outputPath: string, values: Record<string, st
   await appendFile(outputPath, `${lines.join("\n")}\n`, "utf8");
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function requireString(value: unknown, fieldName: string): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`${fieldName} must be a non-empty string`);
+export function formatCliError(error: unknown): string {
+  if (error instanceof AggregateError && error.errors.length > 0) {
+    return error.errors.map(formatCliError).join("\n");
   }
-
-  return value;
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
-main().catch((error) => {
-  const detail = error instanceof Error ? error.message : String(error);
-  console.error(detail);
-  process.exitCode = 1;
-});
+if (import.meta.main) {
+  runCli().catch((error) => {
+    console.error(formatCliError(error));
+    process.exitCode = 1;
+  });
+}
