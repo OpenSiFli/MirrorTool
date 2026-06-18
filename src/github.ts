@@ -2,27 +2,15 @@ import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 
+import { Octokit, type RestEndpointMethodTypes } from "@octokit/rest";
+
 import type { Release, ReleaseAsset } from "./types.ts";
 
-const API_BASE_URL = "https://api.github.com";
 const API_VERSION = "2022-11-28";
 const USER_AGENT = "OpenSiFli-MirrorTool";
 
-interface GitHubReleaseAssetResponse {
-  id: number;
-  name: string;
-  size: number;
-  url: string;
-  browser_download_url: string;
-}
-
-interface GitHubReleaseResponse {
-  tag_name: string;
-  draft: boolean;
-  prerelease: boolean;
-  published_at: string | null;
-  assets: GitHubReleaseAssetResponse[];
-}
+type GitHubReleaseResponse = RestEndpointMethodTypes["repos"]["getReleaseByTag"]["response"]["data"];
+type GitHubReleaseAssetResponse = GitHubReleaseResponse["assets"][number];
 
 export class GitHubApiError extends Error {
   readonly status: number;
@@ -36,17 +24,35 @@ export class GitHubApiError extends Error {
 
 export class GitHubClient {
   readonly token: string | null;
+  private readonly octokit: Octokit;
 
-  constructor(token: string | null) {
+  constructor(token: string | null, octokit?: Octokit) {
     this.token = token;
+    this.octokit = octokit ?? new Octokit({
+      auth: token ?? undefined,
+      userAgent: USER_AGENT,
+      request: {
+        headers: {
+          "X-GitHub-Api-Version": API_VERSION,
+        },
+      },
+    });
   }
 
   async getReleaseByTag(owner: string, repo: string, tag: string): Promise<Release> {
-    const response = await this.requestJson<GitHubReleaseResponse>(
-      `/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,
-    );
-
-    return mapRelease(response);
+    try {
+      const response = await this.octokit.rest.repos.getReleaseByTag({
+        owner,
+        repo,
+        tag,
+      });
+      return mapRelease(response.data);
+    } catch (error) {
+      throw toGitHubApiError(
+        error,
+        `GitHub API request failed for /repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,
+      );
+    }
   }
 
   async downloadAsset(asset: ReleaseAsset, destinationPath: string): Promise<void> {
@@ -67,25 +73,6 @@ export class GitHubClient {
     }
 
     await pipeline(Readable.fromWeb(response.body), createWriteStream(destinationPath));
-  }
-
-  private async requestJson<T>(pathname: string): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${pathname}`, {
-      headers: {
-        ...this.baseHeaders(),
-        Accept: "application/vnd.github+json",
-      },
-    });
-
-    if (!response.ok) {
-      const detail = await safeReadText(response);
-      throw new GitHubApiError(
-        `GitHub API request failed for ${pathname}: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ""}`,
-        response.status,
-      );
-    }
-
-    return (await response.json()) as T;
   }
 
   private baseHeaders(): Record<string, string> {
@@ -110,6 +97,23 @@ function mapRelease(response: GitHubReleaseResponse): Release {
     publishedAt: response.published_at,
     assets: response.assets.map(mapAsset),
   };
+}
+
+function toGitHubApiError(error: unknown, message: string): GitHubApiError {
+  if (error instanceof GitHubApiError) {
+    return error;
+  }
+
+  const detail = error instanceof Error ? error.message : String(error);
+  return new GitHubApiError(`${message}${detail ? `: ${detail}` : ""}`, readStatus(error));
+}
+
+function readStatus(error: unknown): number {
+  if (typeof error === "object" && error !== null && "status" in error && typeof error.status === "number") {
+    return error.status;
+  }
+
+  return 0;
 }
 
 function mapAsset(asset: GitHubReleaseAssetResponse): ReleaseAsset {
