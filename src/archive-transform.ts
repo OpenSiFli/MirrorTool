@@ -1,8 +1,7 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { chmod, lstat, mkdir, readdir, rm } from "node:fs/promises";
-import os from "node:os";
+import { chmod, lstat, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { path7za } from "7zip-bin";
 import { ZipFile } from "yazl";
@@ -48,7 +47,7 @@ export async function applyAssetTransforms(
 }
 
 export async function repackArchiveAsZip(sourcePath: string, targetPath: string): Promise<void> {
-  const tempRoot = await makeTempDirectory(sourcePath);
+  const tempRoot = await makeTempDirectory();
   const extractDirectory = path.join(tempRoot, "extract");
 
   try {
@@ -112,12 +111,8 @@ async function ensureFileExists(filePath: string, errorMessage: string): Promise
   }
 }
 
-async function makeTempDirectory(sourcePath: string): Promise<string> {
-  const hash = createHash("sha256").update(sourcePath).digest("hex").slice(0, 12);
-  const tempRoot = path.join(os.tmpdir(), `mirror-archive-${hash}-${process.pid}`);
-  await rm(tempRoot, { recursive: true, force: true });
-  await mkdir(tempRoot, { recursive: true });
-  return tempRoot;
+async function makeTempDirectory(): Promise<string> {
+  return mkdtemp(path.join(tmpdir(), "mirror-archive-"));
 }
 
 type RunOptions = {
